@@ -3,7 +3,7 @@
 The whole point of the project: money is never created or destroyed, only moved.
 A balanced ledger is the invariant a fintech reviewer will check first.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Tuple
 
 from sqlalchemy import func
@@ -20,7 +20,7 @@ def post(db: Session, event_id: str, legs: List[Leg]) -> None:
     total = sum(amount for _, amount in legs)
     if total != 0:
         raise ValueError(f"Event '{event_id}' unbalanced by {total} paise: {legs}")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for account, amount in legs:
         db.add(LedgerEntry(event_id=event_id, account=account,
                            amount_paise=amount, created_at=now))
@@ -40,7 +40,8 @@ def account_balance(db: Session, account: str) -> int:
 def assert_balanced(db: Session) -> None:
     """The invariant. Call after every mutation."""
     total = ledger_total(db)
-    assert total == 0, f"Ledger unbalanced by {total} paise"
+    if total != 0:
+        raise ValueError(f"Ledger unbalanced by {total} paise")
 
 
 # --- domain events: each records the two-clock settlement story ---

@@ -18,9 +18,14 @@ from app.ledger import record_bank_settlement, assert_balanced
 def ingest_csv(db: Session, csv_path: Path) -> List[SettlementLine]:
     """Parse messy bank CSV → Settlement + SettlementLine rows.
 
+    Idempotent: wipes existing settlement data before ingesting.
     Groups CSV rows by batch_id. Each batch = one Settlement (one bank deposit).
     Each row within a batch = one SettlementLine (one claimed txn).
     """
+    db.query(SettlementLine).delete()
+    db.query(Settlement).delete()
+    db.flush()
+
     batches: Dict[str, list] = defaultdict(list)
     with open(csv_path) as f:
         reader = csv.DictReader(f)
@@ -30,7 +35,6 @@ def ingest_csv(db: Session, csv_path: Path) -> List[SettlementLine]:
     all_lines = []
     for batch_id, rows in batches.items():
         bank_ref = rows[0]["bank_ref"]
-        # ponytail: value_date from first row in batch — all rows in a batch share it
         value_date = datetime.strptime(rows[0]["value_date"], "%Y-%m-%d")
         net_total = sum(int(r["net_paise"]) for r in rows)
 
@@ -51,7 +55,6 @@ def ingest_csv(db: Session, csv_path: Path) -> List[SettlementLine]:
                 fee_paise=int(row["fee_paise"]),
             )
             db.add(line)
-            db.flush()
             all_lines.append(line)
 
     db.commit()
